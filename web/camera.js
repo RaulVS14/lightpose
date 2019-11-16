@@ -287,7 +287,6 @@ function setupFPS() {
 let isSwitching = false;
 let queueSize = 10
 let lastValues = []
-let time = null
 let baseValue = null
 lastValues.push = function (){
     if (this.length >= queueSize) {
@@ -306,9 +305,6 @@ switchValues.push = function (){
     return Array.prototype.push.apply(this,arguments);
 }
 
-let lastToggleTime = null
-let betweenSessionInterval = 2000
-
 function request(endpoint, data) {
   fetch(
     'http://127.0.0.1:5000/' + endpoint, {
@@ -321,6 +317,20 @@ function request(endpoint, data) {
     body: JSON.stringify(data)
   })
 }
+
+let lastActionTime = null
+
+
+const switchMode = _.debounce((newBaseValue=null, mode=null) => {
+  isSwitching = mode === null ? !isSwitching : mode
+  console.log('%c %s', 'font-size: 20pt', isSwitching ? 'Turned on' : 'Turned off')
+  if (isSwitching) {
+    request('send_start_volume', {})
+    baseValue = newBaseValue
+  } else {
+    request('send_end_volume', {})
+  }
+}, 2000)
 
 /**
  * Feeds an image to posenet to estimate poses - this is where the magic
@@ -465,48 +475,47 @@ function detectPoseInRealTime(video, net) {
       const leftWrist = poses[0].keypoints.find(val => val.part === 'leftWrist')
       if (rightWrist && rightWrist.score > 0.5 && leftWrist && leftWrist.score > 0.5) {
         console.log('Both hands')
-        lastValues.push({'left': leftWrist.position, 'right': rightWrist.position})
-        // console.log("%c %d", "font-size: 16pt", Math.abs(rightWrist.position.y - leftWrist.position.y));
-        if (lastValues.length == queueSize) {
-          const meanLeftY = _.meanBy(lastValues, (p) => p.left.y);
-          const meanRightY = _.meanBy(lastValues, (p) => p.right.y);
-          const meanLeftX = _.meanBy(lastValues, (p) => p.left.x);
-          const meanRightX = _.meanBy(lastValues, (p) => p.right.x);
-          const meanDistanceY = Math.abs(meanRightY - meanLeftY)
-          const meanDistanceX = Math.abs(meanRightX - meanLeftX)
-          if (meanDistanceY < 20 && meanDistanceX < 50) {
-            if (!lastToggleTime || new Date() - lastToggleTime > betweenSessionInterval) {
-              isSwitching = !isSwitching
-              console.log('%c %s', 'font-size: 20pt', isSwitching ? 'Turned on' : 'Turned off')
 
-              if (!isSwitching) {
-                lastToggleTime = new Date()
-                request('send_end_volume', {})
-              } else {
-                request('send_start_volume', {})
-              }
-              lastValues.length = 0
-              baseValue = {x: meanRightX, y: meanRightY}
-            }
+        if (lastValues.length > 0) {
+          const lastValue = lastValues[lastValues.length - 1]
+          const meanDistanceX = Math.abs(lastValue.left.x - lastValue.right.x)
+          const meanDistanceY = Math.abs(lastValue.left.y - lastValue.right.y)
+          // const meanLeftY = _.meanBy(lastValues, (p) => p.left.y);
+          // const meanRightY = _.meanBy(lastValues, (p) => p.right.y);
+          // const meanLeftX = _.meanBy(lastValues, (p) => p.left.x);
+          // const meanRightX = _.meanBy(lastValues, (p) => p.right.x);
+
+          // const meanDistanceY = Math.abs(meanRightY - meanLeftY)
+          // const meanDistanceX = Math.abs(meanRightX - meanLeftX)
+          if (meanDistanceY < 20 && meanDistanceX < 100) {
+            switchMode({x: lastValue.right.x, y: lastValue.right.y})
           }
         }
+
+        lastValues.push({'left': leftWrist.position, 'right': rightWrist.position})
       }
+
       if (rightWrist && rightWrist.score > 0.5) {
-        if (isSwitching) {
+        lastActionTime = new Date()
+        if (isSwitching && rightWrist ) {
           switchValues.push(rightWrist.position)
           if (switchCounter == 4) {
             const meanSwitchValueX = _.meanBy(switchValues, (value) => value.x)
             const meanSwitchValueY = _.meanBy(switchValues, (value) => value.y)
-            console.log(baseValue)
-            console.log(meanSwitchValueY)
             const light_volume = (baseValue.y - meanSwitchValueY) / 500.0
             const temperature = (baseValue.x - meanSwitchValueX) / 500.0
             request('send_volume', {light_volume, temperature})
           }
           switchCounter += 1
-          switchCounter = switchCounter % switchQueueSize
+          switchCounter %= switchQueueSize
         }
       }
+    }
+
+    if (isSwitching && lastActionTime && new Date() - lastActionTime > 2000) {
+      console.log('%c Timeout', 'font-size: 20pt')
+      isSwitching = false
+      request('send_end_volume', {})
     }
 
     // For each pose (i.e. person) detected in an image, loop through the poses
