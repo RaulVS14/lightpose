@@ -4,12 +4,15 @@ import time
 from flask import Flask
 from flask import jsonify
 from flask import request
-from flask_cors import CORS
+#from flask_cors import CORS
 
-from lightControl import get_serial_port, init_serial_port, set_light_level_color_temperature
+#from lightControl import get_serial_port, init_serial_port, set_light_level_color_temperature
+from light_regressor import LightRegressor
+
+light_regressor = LightRegressor()
 
 app = Flask(__name__)
-CORS(app)
+#CORS(app)
 
 session_timer = int(time.time())
 
@@ -25,7 +28,7 @@ def initialize_lamp():
             return serialize_device
 
 
-serialized_device = initialize_lamp()
+#serialized_device = initialize_lamp()
 base_value = 0
 light_volume = 0
 running_session = False
@@ -93,6 +96,43 @@ def send_temperature():
         set_light_level_color_temperature(serialized_device, _lightLevelValue=light_temp)
         return {"light_temperature": light_temp}, 200
 
+
+@app.route('/light_intensity_predictions', methods=['POST'])
+def light_intensity_predictions():
+    if request.method == 'POST':
+        data = request.data
+        json_data = json.loads(str(data, encoding='utf-8'))
+        lights_list = json_data.get("lights", None)
+        if lights_list is None:
+            return {"light_intensity_predictions": json.dumps([])}, 200
+
+        preds = light_regressor.predict_light_intensity(lights_list)
+        return json.dumps({"light_intensity_predictions": preds.tolist()}), 200
+
+
+@app.route('/light_warmth_predictions', methods=['POST'])
+def light_warmth_predictions():
+    if request.method == 'POST':
+        data = request.data
+        json_data = json.loads(str(data, encoding='utf-8'))
+        lights_list = json_data.get("lights", None)
+        if lights_list is None:
+            return {"light_warmth_predictions": []}, 200
+
+        preds = light_regressor.predict_light_warmth(lights_list)
+        return json.dumps({"light_warmth_predictions": preds.tolist()}), 200
+
+
+@app.route('/room_temperature_predictions', methods=['POST'])
+def room_temperature_predictions():
+    if request.method == 'POST':
+        data = request.data
+        json_data = json.loads(str(data, encoding='utf-8'))
+        rooms_list = json_data.get("rooms", None)
+        if rooms_list is None:
+            return {"room_temperature_predictions": []}, 200
+        preds = light_regressor.predict_temperature(rooms_list)
+        return json.dumps({"room_temperature_predictions": preds.tolist()}), 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)
