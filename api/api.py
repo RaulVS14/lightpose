@@ -63,7 +63,7 @@ def send_end_volume():
     global running_session
     global light_volume
     if not running_session:
-        return 400
+        return {}, 200
     if request.method == 'POST':
         base_value = light_volume
         print("Changing the BASE value to:", light_volume)
