@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head>
+    
+    <script type="text/javascript" src="/static/js/jquery-3.4.1.js"></script>
+    <script type="text/javascript" src="/static/js/simulator.js"></script>
+
+</head>
+<body>
+
+    <center>
+    <h1>Office Simulator</h1>
+    <br/>
+    <canvas id="canvas" width="1200" height="600">
+    </canvas>
+    <br/><br/>
+    <form>
+        <table border="0">
+            <tr>
+                <td>Users</td>
+                <td><input type="radio" name="user_action" value="add" checked> Add</td>
+                <td><input type="radio" name="user_action" value="remove"> Remove</td>
+            </tr>
+        </table>
+    </form>
+    </center>
+
+<script>
+$(function() {
+    setInterval(async_animation, 1000);
+    $( "#canvas" ).click(function(e) {
+        var elm = $(this);
+        var x = e.pageX- elm.offset().left;
+        var y = e.pageY - elm.offset().top;
+        update_user(x, y);
+    });
+});
+</script>
+</body>
+</html>
