@@ -306,6 +306,9 @@ switchValues.push = function (){
     return Array.prototype.push.apply(this,arguments);
 }
 
+let lastToggleTime = null
+let betweenSessionInterval = 2000
+
 function request(endpoint, data) {
   fetch(
     'http://10.42.0.243:5000/' + endpoint, {
@@ -461,6 +464,7 @@ function detectPoseInRealTime(video, net) {
       const rightWrist = poses[0].keypoints.find(val => val.part === 'rightWrist')
       const leftWrist = poses[0].keypoints.find(val => val.part === 'leftWrist')
       if (rightWrist && rightWrist.score > 0.5 && leftWrist && leftWrist.score > 0.5) {
+        console.log('Both hands')
         lastValues.push({'left': leftWrist.position, 'right': rightWrist.position})
         // console.log("%c %d", "font-size: 16pt", Math.abs(rightWrist.position.y - leftWrist.position.y));
         if (lastValues.length == queueSize) {
@@ -471,27 +475,37 @@ function detectPoseInRealTime(video, net) {
           const meanDistanceY = Math.abs(meanRightY - meanLeftY)
           const meanDistanceX = Math.abs(meanRightX - meanLeftX)
           if (meanDistanceY < 20 && meanDistanceX < 50) {
-            isSwitching = !isSwitching
-            console.log('%c %s', 'font-size: 20pt', isSwitching ? 'Turned on' : 'Turned off')
+            if (!lastToggleTime || new Date() - lastToggleTime > betweenSessionInterval) {
+              isSwitching = !isSwitching
+              console.log('%c %s', 'font-size: 20pt', isSwitching ? 'Turned on' : 'Turned off')
 
-            if (!isSwitching) {
-              request('send_end_volume', {})
+              if (!isSwitching) {
+                lastToggleTime = new Date()
+                request('send_end_volume', {})
+              } else {
+                request('send_start_volume', {})
+              }
+              lastValues.length = 0
+              baseValue = {x: meanRightX, y: meanRightY}
             }
-            lastValues.length = 0
-            baseValue = meanRightY
           }
         }
       }
-
-      if (isSwitching && rightWrist.score > 0.5) {
-        switchValues.push(rightWrist.position.y)
-        if (switchCounter == 4) {
-          const meanSwitchValue = _.meanBy(switchValues)
-          const command = (baseValue - meanSwitchValue) / 500.0
-          request('send_volume', {light_volume: command})
+      if (rightWrist && rightWrist.score > 0.5) {
+        if (isSwitching) {
+          switchValues.push(rightWrist.position)
+          if (switchCounter == 4) {
+            const meanSwitchValueX = _.meanBy(switchValues, (value) => value.x)
+            const meanSwitchValueY = _.meanBy(switchValues, (value) => value.y)
+            console.log(baseValue)
+            console.log(meanSwitchValueY)
+            const light_volume = (baseValue.y - meanSwitchValueY) / 500.0
+            const temperature = (baseValue.x - meanSwitchValueX) / 500.0
+            request('send_volume', {light_volume, temperature})
+          }
+          switchCounter += 1
+          switchCounter = switchCounter % switchQueueSize
         }
-        switchCounter += 1
-        switchCounter = switchCounter % switchQueueSize
       }
     }
 
