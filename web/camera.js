@@ -311,7 +311,7 @@ let betweenSessionInterval = 2000
 
 function request(endpoint, data) {
   fetch(
-    'http://10.42.0.243:5000/' + endpoint, {
+    'http://127.0.0.1:5000/' + endpoint, {
     method: 'POST',
     mode: 'cors',
     headers: {
