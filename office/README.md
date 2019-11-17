@@ -1,5 +1,19 @@
 # Office Simulator
 
+## Install
+
+```
+conda create --name junction python=3.6
+conda activate junction
+pip install Flask==1.1.1
+```
+
+## Run
+
+```
+conda activate junction
+python main.py
+```
 
 ## Change the light power
 
