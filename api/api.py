@@ -1,12 +1,14 @@
 import json
 import time
-
+import requests
 from flask import Flask
 from flask import jsonify
 from flask import request
 from flask_cors import CORS
 
 from lightControl import get_serial_port, init_serial_port, set_light_level_color_temperature
+
+simulation_api = "http://192.168.0.112:5000/update/power?id=r106&power="
 
 app = Flask(__name__)
 CORS(app)
@@ -30,6 +32,9 @@ base_value = 0
 light_volume = 0
 running_session = False
 
+base_temp_value = 3500
+light_temperature = 3500
+
 
 @app.route('/send_volume', methods=["POST", "GET"])
 def send_volume():
@@ -37,22 +42,36 @@ def send_volume():
     global light_volume
     global session_timer
     global running_session
+    global light_temperature
+    global simulation_api
     if int(time.time()) - session_timer > 10:
         base_value = light_volume
+        print("Here")
     if request.method == 'POST':
         data = request.data
-        print(data)
         json_data = json.loads(str(data, encoding='utf-8'))
         light_volume_temp = json_data.get("light_volume")
-        print(light_volume_temp)
-        light_volume = base_value + light_volume_temp * 100
-        light_volume = 100 if light_volume > 100 else light_volume
-        light_volume = 0 if light_volume < 0 else light_volume
-        print("Changing the value to:", light_volume)
-        set_light_level_color_temperature(serialized_device, _lightLevelValue=light_volume)
-        session_timer = int(time.time())
-        running_session = True
-        return jsonify({"light_volume": light_volume}), 200
+        if light_volume_temp:
+            running_session = True
+            light_volume = base_value + light_volume_temp * 100
+            light_volume = 100 if light_volume > 100 else light_volume
+            light_volume = 0 if light_volume < 0 else light_volume
+            session_timer = int(time.time())
+        light_volume_temp = json_data.get("temperature")
+        if light_volume_temp:
+            running_session = True
+            light_temperature = base_temp_value + light_volume_temp * 3800
+            light_temperature = 6500 if light_temperature > 6500 else light_temperature
+            light_temperature = 3500 if light_temperature < 3500 else light_temperature
+            session_timer = int(time.time())
+        print("Changing volume to", light_volume, " and temp to", light_temperature)
+        set_light_level_color_temperature(serialized_device, _lightLevelValue=light_volume,
+                                          _colourTemperatureValue=light_temperature)
+
+        url = simulation_api + str(int(light_volume))
+        requests.get(url)
+        return jsonify({"light_temperature": light_temperature}), 200
+
     elif request.method == "GET":
         return jsonify({"Status": "Hello"})
 
@@ -62,11 +81,14 @@ def send_end_volume():
     global base_value
     global running_session
     global light_volume
+    global base_temp_value
+    global light_temperature
     if not running_session:
         return {}, 200
     if request.method == 'POST':
         base_value = light_volume
-        print("Changing the BASE value to:", light_volume)
+        base_temp_value = light_temperature
+        # print("Changing the BASE value to:", light_volume)
         running_session = False
         return jsonify({"base_volume": light_volume}), 200
     elif request.method == "GET":
@@ -78,20 +100,10 @@ def send_start_volume():
     global running_session
     if request.method == 'POST':
         running_session = True
+        # blink()
         return jsonify({"base_volume": light_volume}), 200
     elif request.method == "GET":
         return jsonify({"Status": "Hello"})
-
-
-@app.route('/send_temperature', methods=["POST"])
-def send_temperature():
-    # TODO
-    if request.method == 'POST':
-        data = request.data
-        json_data = json.loads(str(data, encoding='utf-8'))
-        light_temp = json_data.get("light_temperature")
-        set_light_level_color_temperature(serialized_device, _lightLevelValue=light_temp)
-        return {"light_temperature": light_temp}, 200
 
 
 if __name__ == '__main__':

@@ -9,3 +9,4 @@ flatbuffers
 flask
 request
 flask-cors
+requests

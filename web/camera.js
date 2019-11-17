@@ -319,18 +319,23 @@ function request(endpoint, data) {
 }
 
 let lastActionTime = null
+let lastTimeSwitched = null
 
 
-const switchMode = _.debounce((newBaseValue=null, mode=null) => {
-  isSwitching = mode === null ? !isSwitching : mode
+function switchMode(newBaseValue=null) {
+  lastTimeSwitched = new Date()
+  isSwitching = !isSwitching
   console.log('%c %s', 'font-size: 20pt', isSwitching ? 'Turned on' : 'Turned off')
   if (isSwitching) {
+    document.querySelector("#start-audio").play()
     request('send_start_volume', {})
     baseValue = newBaseValue
   } else {
+    document.querySelector("#end-audio").play()
     request('send_end_volume', {})
   }
-}, 2000)
+  lastValues.length = 0
+}
 
 /**
  * Feeds an image to posenet to estimate poses - this is where the magic
@@ -473,22 +478,20 @@ function detectPoseInRealTime(video, net) {
     if (poses.length > 0) {
       const rightWrist = poses[0].keypoints.find(val => val.part === 'rightWrist')
       const leftWrist = poses[0].keypoints.find(val => val.part === 'leftWrist')
-      if (rightWrist && rightWrist.score > 0.5 && leftWrist && leftWrist.score > 0.5) {
-        console.log('Both hands')
+      if (rightWrist && rightWrist.score > 0.15 && leftWrist && leftWrist.score > 0.15) {
 
         if (lastValues.length > 0) {
-          const lastValue = lastValues[lastValues.length - 1]
-          const meanDistanceX = Math.abs(lastValue.left.x - lastValue.right.x)
-          const meanDistanceY = Math.abs(lastValue.left.y - lastValue.right.y)
-          // const meanLeftY = _.meanBy(lastValues, (p) => p.left.y);
-          // const meanRightY = _.meanBy(lastValues, (p) => p.right.y);
-          // const meanLeftX = _.meanBy(lastValues, (p) => p.left.x);
-          // const meanRightX = _.meanBy(lastValues, (p) => p.right.x);
+          const meanLeftY = _.meanBy(lastValues, (p) => p.left.y);
+          const meanRightY = _.meanBy(lastValues, (p) => p.right.y);
+          const meanLeftX = _.meanBy(lastValues, (p) => p.left.x);
+          const meanRightX = _.meanBy(lastValues, (p) => p.right.x);
 
-          // const meanDistanceY = Math.abs(meanRightY - meanLeftY)
-          // const meanDistanceX = Math.abs(meanRightX - meanLeftX)
-          if (meanDistanceY < 20 && meanDistanceX < 100) {
-            switchMode({x: lastValue.right.x, y: lastValue.right.y})
+          const meanDistanceY = Math.abs(meanRightY - meanLeftY)
+          const meanDistanceX = Math.abs(meanRightX - meanLeftX)
+
+          const enoughTimePassed = !lastTimeSwitched || new Date() - lastTimeSwitched > 2000
+          if (enoughTimePassed && meanDistanceY < 20 && meanDistanceX < 50) {
+            switchMode({x: meanRightX, y: meanRightY})
           }
         }
 
@@ -496,18 +499,22 @@ function detectPoseInRealTime(video, net) {
       }
 
       if (rightWrist && rightWrist.score > 0.5) {
+
+        console.log(new Date() - lastActionTime)
         lastActionTime = new Date()
         if (isSwitching && rightWrist ) {
-          switchValues.push(rightWrist.position)
-          if (switchCounter == 4) {
-            const meanSwitchValueX = _.meanBy(switchValues, (value) => value.x)
-            const meanSwitchValueY = _.meanBy(switchValues, (value) => value.y)
+          //switchValues.push(rightWrist.position)
+          //if (switchCounter == 4) {
+            // const meanSwitchValueX = _.meanBy(switchValues, (value) => value.x)
+            // const meanSwitchValueY = _.meanBy(switchValues, (value) => value.y)
+            const meanSwitchValueX = rightWrist.position.x
+            const meanSwitchValueY = rightWrist.position.y
             const light_volume = (baseValue.y - meanSwitchValueY) / 500.0
-            const temperature = (baseValue.x - meanSwitchValueX) / 500.0
+            const temperature = (-baseValue.x + meanSwitchValueX) / 500.0
             request('send_volume', {light_volume, temperature})
-          }
-          switchCounter += 1
-          switchCounter %= switchQueueSize
+          //}
+          //switchCounter += 1
+          //switchCounter %= switchQueueSize
         }
       }
     }
@@ -516,6 +523,7 @@ function detectPoseInRealTime(video, net) {
       console.log('%c Timeout', 'font-size: 20pt')
       isSwitching = false
       request('send_end_volume', {})
+      document.querySelector("#end-audio").play()
     }
 
     // For each pose (i.e. person) detected in an image, loop through the poses
