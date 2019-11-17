@@ -1,6 +1,7 @@
 # Smart-spaces
 
 Machine learning from radar and camera  to model shared spaces and optimize their utilization.
+This project was prepared during [Junction 2019](https://2019.hackjunction.com/)
 
 
 ## Description
